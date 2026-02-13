@@ -3,23 +3,36 @@ FROM maven:3.8.4-openjdk-17
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
-RUN apt-get update -y && \
+# ---- system deps + python3.9 ----
+RUN set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl gnupg2 lsb-release python3 python3-pip && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-      | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
-      > /etc/apt/sources.list.d/google-cloud-sdk.list && \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-      google-cloud-cli \
-      google-cloud-cli-app-engine-java && \
-    apt-get clean && \
+      ca-certificates curl tar xz-utils gnupg; \
+    \
+    if apt-cache show python3.9 >/dev/null 2>&1; then \
+      apt-get install -y --no-install-recommends python3.9 python3.9-distutils; \
+      ln -sf /usr/bin/python3.9 /usr/local/bin/python3; \
+    else \
+      apt-get install -y --no-install-recommends python3 python3-distutils python3-pip; \
+    fi; \
+    \
     rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/usr/lib/google-cloud-sdk/bin:${PATH}"
+ARG SDK_VERSION=404.0.0
+RUN set -eux; \
+    SDK_FILENAME="google-cloud-sdk-${SDK_VERSION}-linux-x86_64.tar.gz"; \
+    curl -L -o /tmp/${SDK_FILENAME} "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${SDK_FILENAME}"; \
+    mkdir -p /opt; \
+    tar -zxf /tmp/${SDK_FILENAME} -C /opt; \
+    /opt/google-cloud-sdk/install.sh --quiet; \
+    rm -f /tmp/${SDK_FILENAME}
 
-RUN gcloud --version && python3 --version && mvn -v
+ENV PATH="/opt/google-cloud-sdk/bin:${PATH}"
+
+# ---- components ----
+RUN set -eux; \
+    gcloud --version; \
+    gcloud components install app-engine-java --quiet; \
+    gcloud components list --only-local-state | head -n 200
 
 WORKDIR /workspace
